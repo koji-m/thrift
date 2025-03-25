@@ -8,6 +8,7 @@ struct TType(EqualityComparable, Stringable):
     var value: Int8
     alias stop = TType(0)
     alias i32 = TType(8)
+    alias i64 = TType(10)
     alias binary = TType(11)
     alias string = TType(11)
 
@@ -35,6 +36,10 @@ trait TProtocol:
     fn read_i32(mut self) -> Int32:
         ...
     fn write_i32(mut self, i32_val: Int32) -> None:
+        ...
+    fn read_i64(mut self) -> Int64:
+        ...
+    fn write_i64(mut self, i64_val: Int64) -> None:
         ...
     fn read_binary(mut self) -> List[UInt8]:
         ...
@@ -104,6 +109,14 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         # ToDo: check endian
         return byte_swap(i32_val)
 
+    fn read_i64(mut self) -> Int64:
+        var buf = self.trans.read_all(8)
+        var ptr = buf.unsafe_ptr()
+        var int64_ptr = ptr.bitcast[Int64]()
+        var i64_val = int64_ptr[]
+        # ToDo: check endian
+        return byte_swap(i64_val)
+
     fn write_i32(mut self, i32_val: Int32) -> None:
         var be_i32_val = byte_swap(i32_val)
         var int32_ptr = UnsafePointer.address_of(be_i32_val)
@@ -114,6 +127,18 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
             bytes.append(uint8_ptr[i])
 
         self.trans.write(bytes)
+
+    fn write_i64(mut self, i64_val: Int64) -> None:
+        var be_i64_val = byte_swap(i64_val)
+        var int64_ptr = UnsafePointer.address_of(be_i64_val)
+        var uint8_ptr = int64_ptr.bitcast[UInt8]()
+        var bytes = List[UInt8](capacity=8)
+
+        for i in range(8):
+            bytes.append(uint8_ptr[i])
+
+        self.trans.write(bytes)
+
 
     fn read_binary(mut self) -> List[UInt8]:
         var size = Int(self.read_i32())
