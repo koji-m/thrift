@@ -11,6 +11,7 @@ struct TType(EqualityComparable, Stringable):
     alias i64 = TType(10)
     alias binary = TType(11)
     alias string = TType(11)
+    alias list = TType(15)
 
     fn __eq__(self, other: Self) -> Bool:
         return self.value == other.value
@@ -48,6 +49,10 @@ trait TProtocol:
     fn write_binary(mut self, bytes: List[UInt8]) -> None:
         ...
     fn write_string(mut self, str: String) -> None:
+        ...
+    fn read_i64_list(mut self) raises -> List[Int64]:
+        ...
+    fn write_i64_list(mut self, i64_list: List[Int64]) -> None:
         ...
     fn read_struct_begin(self) -> None:
         ...
@@ -163,6 +168,23 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
             bytes.append(uint8_ptr[i])
 
         self.write_binary(bytes)
+
+    fn read_i64_list(mut self) raises -> List[Int64]:
+        var type = self.read_byte()
+        if TType(Int8(type)) != TType.i64:
+            raise Error("list element type expected i64, got " + String(type))
+        var size = Int(self.read_i32())
+        var i64_list = List[Int64](capacity=size)
+        for i in range(size):
+            i64_list.append(self.read_i64())
+        return i64_list
+
+    fn write_i64_list(mut self, i64_list: List[Int64]) -> None:
+        self.write_byte(UInt8(TType.i64.value))
+        var size = len(i64_list)
+        self.write_i32(Int32(size))
+        for i in range(size):
+            self.write_i64(i64_list[i])
 
     fn read_struct_begin(self) -> None:
         pass
