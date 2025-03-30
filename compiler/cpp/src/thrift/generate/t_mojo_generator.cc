@@ -130,7 +130,7 @@ public:
 
   void generate_serialize_struct(std::ostream& out, t_struct* tstruct, std::string prefix = "");
 
-  void generate_serialize_container(std::ostream& out, t_type* ttype, std::string prefix = "");
+  void generate_serialize_container(std::ostream& out, t_field* tfield, std::string prefix = "");
 
   void generate_serialize_map_element(std::ostream& out,
                                       t_map* tmap,
@@ -139,7 +139,7 @@ public:
 
   void generate_serialize_set_element(std::ostream& out, t_set* tmap, std::string iter);
 
-  void generate_serialize_list_element(std::ostream& out, t_list* tlist, std::string iter);
+  void generate_serialize_list_element(std::ostream& out, t_list* tlist, std::string name_with_iter);
 
   void generate_mojo_docstring(std::ostream& out, t_struct* tstruct);
 
@@ -761,7 +761,7 @@ void t_mojo_generator::generate_mojo_struct_writer(ostream& out, t_struct* tstru
   out << '\n';
 
   // Write the struct map
-  out << indent() << "oprot.write_field_stop()" << '\n' << indent() << "oprot.writes_struct_end()";
+  out << indent() << "oprot.write_field_stop()" << '\n' << indent() << "oprot.write_struct_end()";
 
   out << '\n';
 
@@ -996,7 +996,7 @@ void t_mojo_generator::generate_serialize_field(ostream& out, t_field* tfield, s
   if (type->is_struct() || type->is_xception()) {
     generate_serialize_struct(out, (t_struct*)type, prefix + tfield->get_name());
   } else if (type->is_container()) {
-    generate_serialize_container(out, type, prefix + tfield->get_name());
+    generate_serialize_container(out, tfield, prefix);
   } else if (type->is_base_type() || type->is_enum()) {
     string name = prefix + tfield->get_name();
 
@@ -1066,7 +1066,11 @@ void t_mojo_generator::generate_serialize_struct(ostream& out, t_struct* tstruct
   indent(out) << prefix << ".write(oprot)" << '\n';
 }
 
-void t_mojo_generator::generate_serialize_container(ostream& out, t_type* ttype, string prefix) {
+void t_mojo_generator::generate_serialize_container(ostream& out, t_field* tfield, string prefix) {
+  t_type* ttype = get_true_type(tfield->get_type());
+  t_field::e_req req = tfield->get_req();
+
+  string name = prefix + tfield->get_name();
   if (ttype->is_map()) {
     indent(out) << "oprot.writeMapBegin(" << type_to_enum(((t_map*)ttype)->get_key_type()) << ", "
                 << type_to_enum(((t_map*)ttype)->get_val_type()) << ", "
@@ -1075,9 +1079,12 @@ void t_mojo_generator::generate_serialize_container(ostream& out, t_type* ttype,
     indent(out) << "oprot.writeSetBegin(" << type_to_enum(((t_set*)ttype)->get_elem_type()) << ", "
                 << "len(" << prefix << "))" << '\n';
   } else if (ttype->is_list()) {
-    indent(out) << "oprot.writeListBegin(" << type_to_enum(((t_list*)ttype)->get_elem_type())
-                << ", "
-                << "len(" << prefix << "))" << '\n';
+    if (req != t_field::T_REQUIRED) {
+      indent(out) << "var size = len(" << name << ".value())" << '\n';
+    } else {
+      indent(out) << "var size = len(" << name << ")" << '\n';
+    }
+    indent(out) << "oprot.write_list_begin(" << type_to_enum(((t_list*)ttype)->get_elem_type()) << ", size)" << '\n';
   }
 
   if (ttype->is_map()) {
@@ -1095,9 +1102,16 @@ void t_mojo_generator::generate_serialize_container(ostream& out, t_type* ttype,
     indent_down();
   } else if (ttype->is_list()) {
     string iter = tmp("iter");
-    indent(out) << "for " << iter << " in " << prefix << ":" << '\n';
+    indent(out) << "for " << iter << " in range(size):" << '\n';
     indent_up();
-    generate_serialize_list_element(out, (t_list*)ttype, iter);
+
+    string name_with_iter = name;
+    if (req != t_field::T_REQUIRED) {
+      name_with_iter += ".value()";
+    } 
+    name_with_iter += "[" + iter + "]";
+    generate_serialize_list_element(out, (t_list*)ttype, name_with_iter);
+
     indent_down();
   }
 
@@ -1106,7 +1120,7 @@ void t_mojo_generator::generate_serialize_container(ostream& out, t_type* ttype,
   } else if (ttype->is_set()) {
     indent(out) << "oprot.writeSetEnd()" << '\n';
   } else if (ttype->is_list()) {
-    indent(out) << "oprot.writeListEnd()" << '\n';
+    indent(out) << "oprot.write_list_end()" << '\n';
   }
 }
 
@@ -1136,8 +1150,9 @@ void t_mojo_generator::generate_serialize_set_element(ostream& out, t_set* tset,
 /**
  * Serializes the members of a list.
  */
-void t_mojo_generator::generate_serialize_list_element(ostream& out, t_list* tlist, string iter) {
-  t_field efield(tlist->get_elem_type(), iter);
+void t_mojo_generator::generate_serialize_list_element(ostream& out, t_list* tlist, string name_with_iter) {
+  t_field efield(tlist->get_elem_type(), name_with_iter);
+  efield.set_req(t_field::e_req::T_REQUIRED);
   generate_serialize_field(out, &efield, "");
 }
 
