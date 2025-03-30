@@ -50,8 +50,6 @@ trait TProtocol:
         ...
     fn write_string(mut self, str: String) -> None:
         ...
-    fn read_i64_list(mut self) raises -> List[Int64]:
-        ...
     fn write_i64_list(mut self, i64_list: List[Int64]) -> None:
         ...
     fn read_struct_begin(self) -> None:
@@ -62,6 +60,10 @@ trait TProtocol:
         ...
     fn read_field_end(self) -> None:
         ...
+    fn read_list_begin(mut self) raises -> Int:
+        ...
+    fn read_list_end(self) -> None:
+        ...
     fn write_struct_begin(self) -> None:
         ...
     fn write_field_begin(mut self, _name: String, type: TType, id: Int16) -> None:
@@ -69,6 +71,10 @@ trait TProtocol:
     fn write_field_end(self) -> None:
         ...
     fn write_field_stop(mut self) -> None:
+        ...
+    fn write_list_begin(mut self, ttype: TType, size: Int) -> None:
+        ...
+    fn write_list_end(self) -> None:
         ...
     fn write_struct_end(self) -> None:
         ...
@@ -203,6 +209,15 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
     fn read_field_end(self) -> None:
         pass
 
+    fn read_list_begin(mut self) raises -> Int:
+        var type = self.read_byte()
+        if TType(Int8(type)) != TType.i64:
+            raise Error("list element type expected i64, got " + String(type))
+        return Int(self.read_i32())
+
+    fn read_list_end(self) -> None:
+        pass
+
     fn write_struct_begin(self) -> None:
         pass
 
@@ -215,6 +230,13 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
 
     fn write_field_stop(mut self) -> None:
         self.write_byte(UInt8(TType.stop.value))
+
+    fn write_list_begin(mut self, ttype: TType, size: Int) -> None:
+        self.write_byte(UInt8(ttype.value))
+        self.write_i32(Int32(size))
+
+    fn write_list_end(self) -> None:
+        pass
 
     fn write_struct_end(self) -> None:
         pass

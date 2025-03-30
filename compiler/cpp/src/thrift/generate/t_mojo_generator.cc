@@ -115,7 +115,7 @@ public:
 
   void generate_deserialize_struct(std::ostream& out, t_struct* tstruct, std::string prefix = "");
 
-  void generate_deserialize_container(std::ostream& out, t_type* ttype, std::string prefix = "");
+  void generate_deserialize_container(std::ostream& out, t_type* ttype, t_field* tfield, std::string prefix = "");
 
   void generate_deserialize_set_element(std::ostream& out, t_set* tset, std::string prefix = "");
 
@@ -123,6 +123,7 @@ public:
 
   void generate_deserialize_list_element(std::ostream& out,
                                          t_list* tlist,
+                                         t_field* tfield,
                                          std::string prefix = "");
 
   void generate_serialize_field(std::ostream& out, t_field* tfield, std::string prefix = "");
@@ -675,7 +676,7 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
   const vector<t_field*>& fields = tstruct->get_members();
   vector<t_field*>::const_iterator f_iter;
 
-  indent(out) << "fn read[T: TProtocol](mut self, mut iprot: T) -> None:" << '\n';
+  indent(out) << "fn read[T: TProtocol](mut self, mut iprot: T) raises -> None:" << '\n';
   indent_up();
 
   indent(out) << "iprot.read_struct_begin()" << '\n';
@@ -793,7 +794,7 @@ void t_mojo_generator::generate_deserialize_field(ostream& out,
   if (type->is_struct() || type->is_xception()) {
     generate_deserialize_struct(out, (t_struct*)type, name);
   } else if (type->is_container()) {
-    generate_deserialize_container(out, type, name);
+    generate_deserialize_container(out, type, tfield, prefix);
   } else if (type->is_base_type()) {
     std::ostringstream ss;
 
@@ -836,10 +837,16 @@ void t_mojo_generator::generate_deserialize_field(ostream& out,
       }
     }
 
-    if (tfield->get_req() == t_field::T_REQUIRED) {
-      indent(out) << name << " = " << ss.str();
+    if (prefix == "") {
+      indent(out) << "var " << name << " = ";
     } else {
-      indent(out) << name << " = Optional(" << ss.str() << ')';
+      indent(out) << name << " = ";
+    }
+
+    if (tfield->get_req() == t_field::T_REQUIRED) {
+      out << ss.str();
+    } else {
+      out << "Optional(" << ss.str() << ')';
     }
     out << '\n';
   } else if (type->is_enum()) {
@@ -868,7 +875,7 @@ void t_mojo_generator::generate_deserialize_struct(ostream& out, t_struct* tstru
  * Serialize a container by writing out the header followed by
  * data and then a footer.
  */
-void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttype, string prefix) {
+void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttype, t_field* tfield, string prefix) {
   string size = tmp("_size");
   string ktype = tmp("_ktype");
   string vtype = tmp("_vtype");
@@ -887,14 +894,18 @@ void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttyp
     out << indent() << prefix << " = set()" << '\n' << indent() << "(" << etype << ", " << size
         << ") = iprot.readSetBegin()" << '\n';
   } else if (ttype->is_list()) {
-    out << indent() << prefix << " = []" << '\n' << indent() << "(" << etype << ", " << size
-        << ") = iprot.readListBegin()" << '\n';
+    t_type* elem_ttype = ((t_list*)ttype)->get_elem_type();
+    out << indent() << "var size = iprot.read_list_begin()" << '\n';
+    if (prefix == "") {
+      out << indent() << "var " << tfield->get_name() << " = List[" << type_to_mojo_type(elem_ttype) << "](capacity=size)" << '\n';
+    } else {
+      out << indent() << prefix << tfield->get_name() << " = List[" << type_to_mojo_type(elem_ttype) << "](capacity=size)" << '\n';
+    }
   }
 
   // For loop iterates over elements
-  string i = tmp("_i");
   indent(out) <<
-    "for " << i << " in range(" << size << "):" << '\n';
+    "for " << "_ in range(size):" << '\n';
 
   indent_up();
 
@@ -903,7 +914,7 @@ void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttyp
   } else if (ttype->is_set()) {
     generate_deserialize_set_element(out, (t_set*)ttype, prefix);
   } else if (ttype->is_list()) {
-    generate_deserialize_list_element(out, (t_list*)ttype, prefix);
+    generate_deserialize_list_element(out, (t_list*)ttype, tfield, prefix);
   }
 
   indent_down();
@@ -914,7 +925,7 @@ void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttyp
   } else if (ttype->is_set()) {
     indent(out) << "iprot.readSetEnd()" << '\n';
   } else if (ttype->is_list()) {
-    indent(out) << "iprot.readListEnd()" << '\n';
+    indent(out) << "iprot.read_list_end()" << '\n';
   }
 }
 
@@ -950,13 +961,22 @@ void t_mojo_generator::generate_deserialize_set_element(ostream& out, t_set* tse
  */
 void t_mojo_generator::generate_deserialize_list_element(ostream& out,
                                                        t_list* tlist,
+                                                       t_field* tfield,
                                                        string prefix) {
-  string elem = tmp("_elem");
+  string field_name = tfield->get_name();
+  t_field::e_req req = tfield->get_req();
+
+  string elem = tmp("elem_");
   t_field felem(tlist->get_elem_type(), elem);
+  felem.set_req(t_field::e_req::T_REQUIRED);
 
   generate_deserialize_field(out, &felem);
 
-  indent(out) << prefix << ".append(" << elem << ")" << '\n';
+  if (req != t_field::T_REQUIRED) {
+    indent(out) << prefix  << field_name << ".value().append(" << elem << ")" << '\n';
+  } else {
+    indent(out) << prefix << field_name << ".append(" << elem << ")" << '\n';
+  }
 }
 
 /**
