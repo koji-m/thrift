@@ -60,7 +60,7 @@ trait TProtocol:
         ...
     fn read_field_end(self) -> None:
         ...
-    fn read_list_begin(mut self) raises -> Int:
+    fn read_list_begin(mut self, ttype: TType) raises -> Int:
         ...
     fn read_list_end(self) -> None:
         ...
@@ -209,9 +209,10 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
     fn read_field_end(self) -> None:
         pass
 
-    fn read_list_begin(mut self) raises -> Int:
+    fn read_list_begin(mut self, ttype: TType) raises -> Int:
         var type = self.read_byte()
-        if TType(Int8(type)) != TType.i64:
+        print("read_list_begin")
+        if TType(Int8(type)) != ttype:
             raise Error("list element type expected i64, got " + String(type))
         return Int(self.read_i32())
 

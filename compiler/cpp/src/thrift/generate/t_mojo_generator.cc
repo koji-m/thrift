@@ -229,13 +229,13 @@ void t_mojo_generator::init_generator() {
   string f_init_name = package_dir_ + "/__init__.mojo";
   ofstream_with_content_based_conditional_update f_init;
   f_init.open(f_init_name.c_str());
-  f_init << "__all__ = ['ttypes', 'constants'";
-  vector<t_service*> services = program_->get_services();
-  vector<t_service*>::iterator sv_iter;
-  for (sv_iter = services.begin(); sv_iter != services.end(); ++sv_iter) {
-    f_init << ", '" << (*sv_iter)->get_name() << "'";
-  }
-  f_init << "]" << '\n';
+  // f_init << "__all__ = ['ttypes', 'constants'";
+  // vector<t_service*> services = program_->get_services();
+  // vector<t_service*>::iterator sv_iter;
+  // for (sv_iter = services.begin(); sv_iter != services.end(); ++sv_iter) {
+  //   f_init << ", '" << (*sv_iter)->get_name() << "'";
+  // }
+  // f_init << "]" << '\n';
   f_init.close();
 
   // Print header
@@ -581,11 +581,19 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
 
   for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
     if ((*m_iter)->get_req() == t_field::T_REQUIRED) {
-      indent(out) << (*m_iter)->get_name() << " = repr(self." << (*m_iter)->get_name() << ')' << '\n';
+      string rhs = "repr(self." + (*m_iter)->get_name() + ")";
+      if ((*m_iter)->get_type()->is_list()) {
+        rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
+      }
+      indent(out) << (*m_iter)->get_name() << " = " << rhs << '\n';
     } else {
       indent(out) << "if self." << (*m_iter)->get_name() << ':' << '\n';
       indent_up();
-      indent(out) << (*m_iter)->get_name() << " = repr(self." << (*m_iter)->get_name() << ".value())" << '\n';
+      string rhs = "repr(self." + (*m_iter)->get_name() + ".value())";
+      if ((*m_iter)->get_type()->is_list()) {
+        rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
+      }
+      indent(out) << (*m_iter)->get_name() << " = " << rhs << '\n';
       indent_down();
       indent(out) << "else:" << '\n';
       indent_up();
@@ -621,51 +629,54 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   out << '\n';
 
   // Equality and inequality methods that compare by value
-  out << indent() << "fn __eq__(self, other: Self) -> Bool:" << '\n';
-  indent_up();
-  out << indent() << "return (" << '\n';
-  indent_up();
-  for (std::vector<t_field*>::size_type i = 0; i < members.size(); i++) {
-    t_type* type = get_true_type(members[i]->get_type());
-    std::string name = members[i]->get_name();
+  // out << indent() << "fn __eq__(self, other: Self) -> Bool:" << '\n';
+  // indent_up();
+  // out << indent() << "return (" << '\n';
+  // indent_up();
+  // for (std::vector<t_field*>::size_type i = 0; i < members.size(); i++) {
+  //   t_type* type = get_true_type(members[i]->get_type());
+  //   std::string name = members[i]->get_name();
 
-    if (i != 0) {
-      out << " and" << '\n';
-    }
+  //   if (i != 0) {
+  //     out << " and" << '\n';
+  //   }
 
-    if (members[i]->get_req() == t_field::T_REQUIRED) {
-      out << indent() << "self." << name << " == other." << name;
-    } else {
-      if (type->is_base_type()) {
-        t_base_type::t_base tbase = ((t_base_type*)type)->get_base();
-        switch(tbase) {
-          case t_base_type::TYPE_I8:
-          case t_base_type::TYPE_I16:
-          case t_base_type::TYPE_I32:
-          case t_base_type::TYPE_I64:
-          case t_base_type::TYPE_DOUBLE:
-            out << indent() << "(not self." << name << " and not other." << name << ") or (self." << name
-            << " and other." << name << " and self." << name << ".value() == other." << name << ".value())";
-            break;
-          default:
-            out << indent() << "self." << name << " == other." << name;
-        }
-      } else {
-        out << indent() << "self." << name << " == other." << name;
-      }
-    }
-  }
-  out << '\n';
-  indent_down();
-  out << indent() << ')' << '\n';
-  indent_down();
+  //   if (members[i]->get_req() == t_field::T_REQUIRED) {
+  //     out << indent() << "self." << name << " == other." << name;
+  //   } else {
+  //     if (type->is_base_type()) {
+  //       t_base_type::t_base tbase = ((t_base_type*)type)->get_base();
+  //       switch(tbase) {
+  //         case t_base_type::TYPE_I8:
+  //         case t_base_type::TYPE_I16:
+  //         case t_base_type::TYPE_I32:
+  //         case t_base_type::TYPE_I64:
+  //         case t_base_type::TYPE_DOUBLE:
+  //           out << indent() << "(not self." << name << " and not other." << name << ") or (self." << name
+  //           << " and other." << name << " and self." << name << ".value() == other." << name << ".value())";
+  //           break;
+  //         default:
+  //           out << indent() << "self." << name << " == other." << name;
+  //       }
+  //     } else if (type->is_list()) {
+  //       out << indent() << "(not self." << name << " and not other." << name << ") or (self." << name
+  //       << " and other." << name << " and self." << name << ".value() == other." << name << ".value())";
+  //     } else {
+  //       out << indent() << "self." << name << " == other." << name;
+  //     }
+  //   }
+  // }
+  // out << '\n';
+  // indent_down();
+  // out << indent() << ')' << '\n';
+  // indent_down();
 
-  out << '\n';
+  // out << '\n';
 
-  out << indent() << "fn __ne__(self, other: Self) -> Bool:" << '\n';
-  indent_up();
-  out << indent() << "return not (self == other)" << '\n';
-  indent_down();
+  // out << indent() << "fn __ne__(self, other: Self) -> Bool:" << '\n';
+  // indent_up();
+  // out << indent() << "return not (self == other)" << '\n';
+  // indent_down();
   indent_down();
 }
 
@@ -895,7 +906,7 @@ void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttyp
         << ") = iprot.readSetBegin()" << '\n';
   } else if (ttype->is_list()) {
     t_type* elem_ttype = ((t_list*)ttype)->get_elem_type();
-    out << indent() << "var size = iprot.read_list_begin()" << '\n';
+    out << indent() << "var size = iprot.read_list_begin(" << type_to_enum(elem_ttype) << ")" << '\n';
     if (prefix == "") {
       out << indent() << "var " << tfield->get_name() << " = List[" << type_to_mojo_type(elem_ttype) << "](capacity=size)" << '\n';
     } else {
