@@ -7,6 +7,7 @@ from .transport import TTransport
 struct TType(EqualityComparable, Stringable):
     var value: Int8
     alias stop = TType(0)
+    alias double = TType(4)
     alias i32 = TType(8)
     alias i64 = TType(10)
     alias binary = TType(11)
@@ -29,6 +30,10 @@ trait TProtocol:
     fn read_byte(mut self) -> UInt8:
         ...
     fn write_byte(mut self, byte: UInt8) -> None:
+        ...
+    fn read_double(mut self) -> Float64:
+        ...
+    fn write_double(mut self, f64_val: Float64) -> None:
         ...
     fn read_i16(mut self) -> Int16:
         ...
@@ -91,6 +96,25 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
 
     fn write_byte(mut self, byte: UInt8) -> None:
         self.trans.write(List[UInt8](byte))
+
+    fn read_double(mut self) -> Float64:
+        var buf = self.trans.read_all(8)
+        # ToDo: check endian
+        buf.reverse()
+        var ptr = buf.unsafe_ptr()
+        var float64_ptr = ptr.bitcast[Float64]()
+        return float64_ptr[]
+
+    fn write_double(mut self, f64_val: Float64) -> None:
+        var float64_ptr = UnsafePointer.address_of(f64_val)
+        var uint8_ptr = float64_ptr.bitcast[UInt8]()
+        var bytes = List[UInt8](capacity=8)
+
+        # ToDo: check endian
+        for i in reversed(range(8)):
+            bytes.append(uint8_ptr[i])
+
+        self.trans.write(bytes)
 
     fn read_i16(mut self) -> Int16:
         var buf = self.trans.read_all(2)
