@@ -164,6 +164,8 @@ public:
   std::string type_to_enum(t_type* ttype);
   std::string type_to_mojo_type(t_type* type);
   std::string member_hint(t_type* type, t_field::e_req req);
+  std::string declare_local_variable_for_field(t_field* tfield);
+  std::string render_field_default_value(t_field* tfield);
 
   static std::string get_real_mojo_module(const t_program* program, std::string package_dir="") {
     std::string real_module = program->get_namespace("mojo");
@@ -403,16 +405,22 @@ string t_mojo_generator::render_const_value(t_type* type, t_const_value* value) 
       out << (value->get_integer() > 0 ? "True" : "False");
       break;
     case t_base_type::TYPE_I8:
+      out << "Int8(" << value->get_integer() << ")";
+      break;
     case t_base_type::TYPE_I16:
+      out << "Int16(" << value->get_integer() << ")";
+      break;
     case t_base_type::TYPE_I32:
+      out << "Int32(" << value->get_integer() << ")";
+      break;
     case t_base_type::TYPE_I64:
-      out << value->get_integer();
+      out << "Int64(" << value->get_integer() << ")";
       break;
     case t_base_type::TYPE_DOUBLE:
       if (value->get_type() == t_const_value::CV_INTEGER) {
-        out << "float(" << value->get_integer() << ")";
+        out << "Float64(" << value->get_integer() << ")";
       } else {
-        out << emit_double_as_string(value->get_double());
+        out << "Float64(" << emit_double_as_string(value->get_double()) << ")";
       }
       break;
     case t_base_type::TYPE_UUID:
@@ -424,7 +432,7 @@ string t_mojo_generator::render_const_value(t_type* type, t_const_value* value) 
   } else if (type->is_enum()) {
     out << indent();
     int64_t int_val = value->get_integer();
-    out << int_val;
+    out << type_name(type) << "(" << int_val << ")";
   } else if (type->is_struct() || type->is_xception()) {
     out << type_name(type) << "(**{" << '\n';
     indent_up();
@@ -470,7 +478,7 @@ string t_mojo_generator::render_const_value(t_type* type, t_const_value* value) 
     if (type->is_set()) {
       out << "set(";
     }
-    out << "[" << '\n';
+    out << "List(" << '\n';
     indent_up();
     const vector<t_const_value*>& val = value->get_list();
     vector<t_const_value*>::const_iterator v_iter;
@@ -478,7 +486,7 @@ string t_mojo_generator::render_const_value(t_type* type, t_const_value* value) 
       indent(out) << render_const_value(etype, *v_iter) << "," << '\n';
     }
     indent_down();
-    indent(out) << "]";
+    indent(out) << ")";
     if (type->is_set()) {
       out << ")";
     }
@@ -608,9 +616,9 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   for (std::vector<t_field*>::size_type i = 0; i < members.size(); i++) {
     if (members[i]->get_req() == t_field::T_REQUIRED) {
       if (i == members.size() - 1) {
-        out << indent() << members[i]->get_name() << '\n';
+        out << indent() << members[i]->get_name() << "," << '\n';
       } else {
-        out << indent() << members[i]->get_name() << ',' << '\n';
+        out << indent() << members[i]->get_name() << ", \", \"," << '\n';
       }
     } else {
       if (i == members.size() - 1) {
@@ -680,6 +688,13 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   indent_down();
 }
 
+string t_mojo_generator::declare_local_variable_for_field(t_field* tfield) {
+  std::ostringstream result;
+  result << "var " << tfield->get_name() << member_hint(tfield->get_type(), t_field::T_OPTIONAL);
+
+  return result.str();
+}
+
 /**
  * Generates the read method for a struct
  */
@@ -687,8 +702,16 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
   const vector<t_field*>& fields = tstruct->get_members();
   vector<t_field*>::const_iterator f_iter;
 
-  indent(out) << "fn read[T: TProtocol](mut self, mut iprot: T) raises -> None:" << '\n';
+  indent(out) << "@staticmethod" << '\n';
+  indent(out) << "fn read[T: TProtocol](mut iprot: T) raises -> Self:" << '\n';
   indent_up();
+
+  // initialize local variables
+  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+    indent(out) << declare_local_variable_for_field(*f_iter) << " = " << render_field_default_value(*f_iter) << '\n';
+  }
+
+  out << '\n';
 
   indent(out) << "iprot.read_struct_begin()" << '\n';
 
@@ -735,6 +758,21 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
   indent_down();
 
   indent(out) << "iprot.read_struct_end()" << '\n';
+
+  out << '\n';
+
+  indent(out) << "return Self(" << '\n';
+  indent_up();
+  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+    indent(out) << (*f_iter)->get_name();
+    if ((*f_iter)->get_req() == t_field::T_REQUIRED) {
+      out << ".value()," << '\n';
+    } else {
+      out << "," << '\n';
+    }
+  }
+  indent_down();
+  indent(out) << ")" << '\n';
 
   indent_down();
   out << '\n';
@@ -800,7 +838,7 @@ void t_mojo_generator::generate_deserialize_field(ostream& out,
     throw "CANNOT GENERATE DESERIALIZE CODE FOR void TYPE: " + prefix + tfield->get_name();
   }
 
-  string name = prefix + tfield->get_name();
+  string name = tfield->get_name();
 
   if (type->is_struct() || type->is_xception()) {
     generate_deserialize_struct(out, (t_struct*)type, name);
@@ -848,25 +886,9 @@ void t_mojo_generator::generate_deserialize_field(ostream& out,
       }
     }
 
-    if (prefix == "") {
-      indent(out) << "var " << name << " = ";
-    } else {
-      indent(out) << name << " = ";
-    }
-
-    if (tfield->get_req() == t_field::T_REQUIRED) {
-      out << ss.str();
-    } else {
-      out << "Optional(" << ss.str() << ')';
-    }
-    out << '\n';
+    indent(out) << name << " = " << ss.str() << '\n';
   } else if (type->is_enum()) {
-    if (tfield->get_req() == t_field::T_REQUIRED) {
-      indent(out) << name << " = " << type_name(type) << "(iprot.read_i32())";
-    } else {
-      indent(out) << name << " = Optional(" << type_name(type) << "(iprot.read_i32()))";
-    }
-    out << '\n';
+    indent(out) << name << " = " << type_name(type) << "(iprot.read_i32())" << '\n';
   } else {
     printf("DO NOT KNOW HOW TO DESERIALIZE FIELD '%s' TYPE '%s'\n",
            tfield->get_name().c_str(),
@@ -910,7 +932,7 @@ void t_mojo_generator::generate_deserialize_container(ostream& out, t_type* ttyp
     if (prefix == "") {
       out << indent() << "var " << tfield->get_name() << " = List[" << type_to_mojo_type(elem_ttype) << "](capacity=size)" << '\n';
     } else {
-      out << indent() << prefix << tfield->get_name() << " = List[" << type_to_mojo_type(elem_ttype) << "](capacity=size)" << '\n';
+      out << indent() << tfield->get_name() << " = List[" << type_to_mojo_type(elem_ttype) << "](capacity=size)" << '\n';
     }
   }
 
@@ -975,18 +997,16 @@ void t_mojo_generator::generate_deserialize_list_element(ostream& out,
                                                        t_field* tfield,
                                                        string prefix) {
   string field_name = tfield->get_name();
-  t_field::e_req req = tfield->get_req();
 
   string elem = tmp("elem_");
   t_field felem(tlist->get_elem_type(), elem);
-  felem.set_req(t_field::e_req::T_REQUIRED);
 
   generate_deserialize_field(out, &felem);
 
-  if (req != t_field::T_REQUIRED) {
-    indent(out) << prefix  << field_name << ".value().append(" << elem << ")" << '\n';
+  if (prefix == "") {
+    indent(out) << field_name << ".append(" << elem << ")" << '\n';
   } else {
-    indent(out) << prefix << field_name << ".append(" << elem << ")" << '\n';
+    indent(out) << field_name << ".value().append(" << elem << ")" << '\n';
   }
 }
 
@@ -1379,3 +1399,12 @@ THRIFT_REGISTER_GENERATOR(
     "    package_prefix='top.package.'\n"
     "                     Package prefix for generated files.\n"
 )
+
+string t_mojo_generator::render_field_default_value(t_field* tfield) {
+  t_type* type = get_true_type(tfield->get_type());
+  if (tfield->get_value() != nullptr) {
+    return render_const_value(type, tfield->get_value());
+  } else {
+    return "None";
+  }
+}
