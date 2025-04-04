@@ -12,6 +12,7 @@ struct TType(EqualityComparable, Stringable):
     alias i64 = TType(10)
     alias binary = TType(11)
     alias string = TType(11)
+    alias struct_ = TType(12)
     alias list = TType(15)
 
     fn __eq__(self, other: Self) -> Bool:
