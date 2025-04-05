@@ -792,8 +792,10 @@ void t_mojo_generator::generate_mojo_struct_writer(ostream& out, t_struct* tstru
 
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
     // Write field header
-    indent(out) << "if self." << (*f_iter)->get_name() << ':' << '\n';
-    indent_up();
+    if ((*f_iter)->get_req() != t_field::T_REQUIRED) {
+      indent(out) << "if self." << (*f_iter)->get_name() << ':' << '\n';
+      indent_up();
+    }
     indent(out) << "oprot.write_field_begin("
                 << "\"" << (*f_iter)->get_name() << "\", " << type_to_enum((*f_iter)->get_type())
                 << ", " << (*f_iter)->get_key() << ")" << '\n';
@@ -804,7 +806,11 @@ void t_mojo_generator::generate_mojo_struct_writer(ostream& out, t_struct* tstru
     // Write field closer
     indent(out) << "oprot.write_field_end()" << '\n';
 
-    indent_down();
+    out << '\n';
+
+    if ((*f_iter)->get_req() != t_field::T_REQUIRED) {
+      indent_down();
+    }
   }
 
   out << '\n';
