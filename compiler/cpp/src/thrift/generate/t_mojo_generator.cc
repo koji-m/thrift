@@ -128,7 +128,7 @@ public:
 
   void generate_serialize_field(std::ostream& out, t_field* tfield, std::string prefix = "");
 
-  void generate_serialize_struct(std::ostream& out, t_struct* tstruct, std::string prefix = "");
+  void generate_serialize_struct(std::ostream& out, t_field* tfield, std::string prefix = "");
 
   void generate_serialize_container(std::ostream& out, t_field* tfield, std::string prefix = "");
 
@@ -900,8 +900,7 @@ void t_mojo_generator::generate_deserialize_field(ostream& out,
  * Generates an unserializer for a struct, calling read()
  */
 void t_mojo_generator::generate_deserialize_struct(ostream& out, t_struct* tstruct, string prefix) {
-  out << indent() << prefix << " = " << type_name(tstruct) << "()" << '\n'
-      << indent() << prefix << ".read(iprot)" << '\n';
+  out << indent() << prefix << " = " << type_name(tstruct) << ".read(iprot)" << '\n';
 }
 
 /**
@@ -1025,7 +1024,7 @@ void t_mojo_generator::generate_serialize_field(ostream& out, t_field* tfield, s
   }
 
   if (type->is_struct() || type->is_xception()) {
-    generate_serialize_struct(out, (t_struct*)type, prefix + tfield->get_name());
+    generate_serialize_struct(out, tfield, prefix + tfield->get_name());
   } else if (type->is_container()) {
     generate_serialize_container(out, tfield, prefix);
   } else if (type->is_base_type() || type->is_enum()) {
@@ -1092,9 +1091,12 @@ void t_mojo_generator::generate_serialize_field(ostream& out, t_field* tfield, s
  * @param tstruct The struct to serialize
  * @param prefix  String prefix to attach to all fields
  */
-void t_mojo_generator::generate_serialize_struct(ostream& out, t_struct* tstruct, string prefix) {
-  (void)tstruct;
-  indent(out) << prefix << ".write(oprot)" << '\n';
+void t_mojo_generator::generate_serialize_struct(ostream& out, t_field* tfield, string prefix) {
+  if (tfield->get_req() == t_field::T_REQUIRED) {
+    indent(out) << prefix << ".write(oprot)" << '\n';
+  } else {
+    indent(out) << prefix << ".value().write(oprot)" << '\n';
+  }
 }
 
 void t_mojo_generator::generate_serialize_container(ostream& out, t_field* tfield, string prefix) {
@@ -1377,7 +1379,7 @@ string t_mojo_generator::type_to_enum(t_type* type) {
   } else if (type->is_enum()) {
     return "TType.i32";
   } else if (type->is_struct() || type->is_xception()) {
-    return "TType.struct";
+    return "TType.struct_";
   } else if (type->is_map()) {
     return "TType.map";
   } else if (type->is_set()) {
