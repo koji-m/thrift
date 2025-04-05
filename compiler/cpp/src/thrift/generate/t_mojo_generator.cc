@@ -104,6 +104,7 @@ public:
                                      bool is_xception = false);
   void generate_mojo_struct_reader(std::ostream& out, t_struct* tstruct);
   void generate_mojo_struct_writer(std::ostream& out, t_struct* tstruct);
+  void generate_repr_bytes(std::ostream& out);
 
   /**
    * Serialization constructs
@@ -545,6 +546,7 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   }
   const vector<t_field*>& members = tstruct->get_members();
   vector<t_field*>::const_iterator m_iter;
+  bool has_binary_field = false;
 
   out << '\n' << '\n' << "@value ";
   out << '\n' << "struct " << tstruct->get_name();
@@ -554,6 +556,9 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
 
   if (members.size() > 0) {
     for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+      if ((*m_iter)->get_type()->is_binary()) {
+        has_binary_field = true;
+      }
       out << indent() << declare_field(*m_iter) << "\n";
     }
 
@@ -577,6 +582,10 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   }
 
   out << '\n';
+
+  if (has_binary_field) {
+    generate_repr_bytes(out);
+  }
   generate_mojo_struct_reader(out, tstruct);
   generate_mojo_struct_writer(out, tstruct);
 
@@ -588,8 +597,15 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   indent_up();
 
   for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    string repr_func = "repr";
+    if ((*m_iter)->get_type()->is_base_type()) {
+      t_base_type::t_base tbase = ((t_base_type*)(*m_iter)->get_type())->get_base();
+      if (tbase == t_base_type::TYPE_STRING && (*m_iter)->get_type()->is_binary()) {
+        repr_func = "Self.repr_bytes";
+      }
+    }
     if ((*m_iter)->get_req() == t_field::T_REQUIRED) {
-      string rhs = "repr(self." + (*m_iter)->get_name() + ")";
+      string rhs = repr_func + "(self." + (*m_iter)->get_name() + ")";
       if ((*m_iter)->get_type()->is_list()) {
         rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
       }
@@ -597,7 +613,7 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
     } else {
       indent(out) << "if self." << (*m_iter)->get_name() << ':' << '\n';
       indent_up();
-      string rhs = "repr(self." + (*m_iter)->get_name() + ".value())";
+      string rhs = repr_func + "(self." + (*m_iter)->get_name() + ".value())";
       if ((*m_iter)->get_type()->is_list()) {
         rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
       }
@@ -693,6 +709,25 @@ string t_mojo_generator::declare_local_variable_for_field(t_field* tfield) {
   result << "var " << tfield->get_name() << member_hint(tfield->get_type(), t_field::T_OPTIONAL);
 
   return result.str();
+}
+
+void t_mojo_generator::generate_repr_bytes(ostream& out) {
+  indent(out) << "@staticmethod" << '\n';
+  indent(out) << "fn repr_bytes(bytes: List[UInt8]) -> String:" << '\n';
+  indent_up();
+  indent(out) << "var s = String(\"[\")" << '\n';
+  indent(out) << "for i in range(len(bytes)):" << '\n';
+  indent_up();
+  indent(out) << "s += repr(bytes[i])" << '\n';
+  indent(out) << "if i < len(bytes) - 1:" << '\n';
+  indent_up();
+  indent(out) << "s += \", \"" << '\n';
+  indent_down();
+  indent_down();
+  indent(out) << "s += \"]\"" << '\n';
+  indent(out) << "return s" << '\n';
+  indent_down();
+  out << '\n';
 }
 
 /**
@@ -1364,6 +1399,9 @@ string t_mojo_generator::type_to_enum(t_type* type) {
     case t_base_type::TYPE_VOID:
       throw "NO T_VOID CONSTRUCT";
     case t_base_type::TYPE_STRING:
+      if ((t_base_type *)type->is_binary()) {
+        return "TType.binary";
+      }
       return "TType.string";
     case t_base_type::TYPE_BOOL:
       return "TType.bool";
