@@ -567,7 +567,11 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
     out << indent() << "fn __init__(out self,";
 
     for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-      out << " " << declare_argument(*m_iter) << ",";
+      out << " " << declare_argument(*m_iter);
+      if (tstruct->is_union()) {
+        out << " = None";
+      }
+      out << ",";
     }
     out << "):" << '\n';
 
@@ -617,33 +621,52 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
       if ((*m_iter)->get_type()->is_list()) {
         rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
       }
-      indent(out) << (*m_iter)->get_name() << " = " << rhs << '\n';
-      indent_down();
-      indent(out) << "else:" << '\n';
-      indent_up();
-      indent(out) << (*m_iter)->get_name() << " = \"None\"" << '\n';
-      indent_down();
+      if (tstruct->is_union()) {
+        indent(out) << "inner = " << rhs << '\n';
+        indent_down();
+      } else {
+        indent(out) << (*m_iter)->get_name() << " = " << rhs << '\n';
+        indent_down();
+        indent(out) << "else:" << '\n';
+        indent_up();
+        indent(out) << (*m_iter)->get_name() << " = \"None\"" << '\n';
+        indent_down();
+      }
     }
     out << '\n';
   }
+
+  if (tstruct->is_union()) {
+    indent(out) << "else:" << '\n';
+    indent_up();
+    indent(out) << "inner = \"None\"" << '\n';
+    indent_down();
+    out << '\n';
+  }
+
   out << indent() << "return String(" << '\n';
   indent_up();
   out << indent() << '"' << tstruct->get_name() << "(\"," << '\n';
-  for (std::vector<t_field*>::size_type i = 0; i < members.size(); i++) {
-    if (members[i]->get_req() == t_field::T_REQUIRED) {
-      if (i == members.size() - 1) {
-        out << indent() << members[i]->get_name() << "," << '\n';
+  if (tstruct->is_union()) {
+    out << indent() << "inner," << '\n';
+  } else {
+    for (std::vector<t_field*>::size_type i = 0; i < members.size(); i++) {
+      if (members[i]->get_req() == t_field::T_REQUIRED) {
+        if (i == members.size() - 1) {
+          out << indent() << members[i]->get_name() << "," << '\n';
+        } else {
+          out << indent() << members[i]->get_name() << ", \", \"," << '\n';
+        }
       } else {
-        out << indent() << members[i]->get_name() << ", \", \"," << '\n';
-      }
-    } else {
-      if (i == members.size() - 1) {
-        out << indent() << "\"Optional(\", " << members[i]->get_name() << ", \")\"," << '\n';
-      } else {
-        out << indent() << "\"Optional(\", " << members[i]->get_name() << ", \"), \"," << '\n';
+        if (i == members.size() - 1) {
+          out << indent() << "\"Optional(\", " << members[i]->get_name() << ", \")\"," << '\n';
+        } else {
+          out << indent() << "\"Optional(\", " << members[i]->get_name() << ", \"), \"," << '\n';
+        }
       }
     }
   }
+  
   out << indent() << "\")\"," << '\n';
 
   indent_down();
@@ -748,6 +771,11 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
 
   out << '\n';
 
+  if (tstruct->is_union()) {
+    indent(out) << "var received_field_count = 0" << '\n';
+    out << '\n';
+  }
+
   indent(out) << "iprot.read_struct_begin()" << '\n';
 
   // Loop over reading in fields
@@ -755,7 +783,11 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
   indent_up();
 
   // Read beginning field marker
-  indent(out) << "(_fname, ftype, fid) = iprot.read_field_begin()" << '\n';
+  if (fields.size() > 0) {
+    indent(out) << "(_fname, ftype, fid) = iprot.read_field_begin()" << '\n';
+  } else {
+    indent(out) << "(_fname, ftype, _fid) = iprot.read_field_begin()" << '\n';
+  }
 
   // Check for field STOP marker and break
   indent(out) << "if ftype == TType.stop:" << '\n';
@@ -781,6 +813,9 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
     generate_deserialize_field(out, *f_iter, "self.");
     indent_down();
     out << indent() << "else:" << '\n' << indent() << indent_str() << "iprot.skip(ftype)" << '\n';
+    if (tstruct->is_union()) {
+      indent(out) << "received_field_count += 1" << '\n';
+    }
     indent_down();
   }
 
@@ -791,6 +826,14 @@ void t_mojo_generator::generate_mojo_struct_reader(ostream& out, t_struct* tstru
   indent(out) << "iprot.read_field_end()" << '\n';
 
   indent_down();
+
+  if (tstruct->is_union()) {
+    indent(out) << "if received_field_count != 1:" << '\n';
+    indent_up();
+    indent(out) << "raise Error(\"Expected exactly one field to be set, but got\", received_field_count)" << '\n';
+    indent_down();
+    out << '\n';
+  }
 
   indent(out) << "iprot.read_struct_end()" << '\n';
 
