@@ -8,7 +8,9 @@ struct TType(EqualityComparable, Stringable):
     var value: Int8
     alias stop = TType(0)
     alias bool = TType(2)
+    alias i8 = TType(3)
     alias double = TType(4)
+    alias i16 = TType(6)
     alias i32 = TType(8)
     alias i64 = TType(10)
     alias binary = TType(11)
@@ -41,6 +43,10 @@ trait TProtocol:
     fn read_double(mut self) -> Float64:
         ...
     fn write_double(mut self, f64_val: Float64) -> None:
+        ...
+    fn read_i8(mut self) -> Int8:
+        ...
+    fn write_i8(mut self, i8_val: Int8) -> None:
         ...
     fn read_i16(mut self) -> Int16:
         ...
@@ -137,6 +143,12 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
             bytes.append(uint8_ptr[i])
 
         self.trans.write(bytes)
+
+    fn read_i8(mut self) -> Int8:
+        return Int8(self.read_byte())
+
+    fn write_i8(mut self, i8_val: Int8) -> None:
+        self.write_byte(UInt8(i8_val))
 
     fn read_i16(mut self) -> Int16:
         var buf = self.trans.read_all(2)

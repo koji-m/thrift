@@ -1137,7 +1137,7 @@ void t_mojo_generator::generate_serialize_field(ostream& out, t_field* tfield, s
         out << "write_bool(" << name << ")";
         break;
       case t_base_type::TYPE_I8:
-        out << "write_byte(" << name << ")";
+        out << "write_i8(" << name << ")";
         break;
       case t_base_type::TYPE_I16:
         out << "write_i16(" << name << ")";
@@ -1449,7 +1449,7 @@ string t_mojo_generator::type_to_enum(t_type* type) {
     case t_base_type::TYPE_BOOL:
       return "TType.bool";
     case t_base_type::TYPE_I8:
-      return "TType.byte";
+      return "TType.i8";
     case t_base_type::TYPE_I16:
       return "TType.i16";
     case t_base_type::TYPE_I32:
