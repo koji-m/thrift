@@ -1,7 +1,7 @@
 from bit.bit import byte_swap
 from memory.unsafe_pointer import UnsafePointer
 
-from .transport import TTransport
+from ..transport import TTransport
 
 @value
 struct TType(EqualityComparable, Stringable):
