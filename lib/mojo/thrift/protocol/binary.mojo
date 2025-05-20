@@ -1,103 +1,9 @@
 from bit.bit import byte_swap
 from memory.unsafe_pointer import UnsafePointer
 
+from .base import TProtocol, TType
 from ..transport import TTransport
 
-@value
-struct TType(EqualityComparable, Stringable):
-    var value: Int8
-    alias stop = TType(0)
-    alias bool = TType(2)
-    alias i8 = TType(3)
-    alias double = TType(4)
-    alias i16 = TType(6)
-    alias i32 = TType(8)
-    alias i64 = TType(10)
-    alias binary = TType(11)
-    alias string = TType(11)
-    alias struct_ = TType(12)
-    alias union = TType(12)
-    alias list = TType(15)
-
-    fn __eq__(self, other: Self) -> Bool:
-        return self.value == other.value
-
-    fn __ne__(self, other: Self) -> Bool:
-        return not self == other
-
-    fn __str__(self) -> String:
-        return String(self.value)
-
-    fn write_to[W: Writer](self, mut writer: W):
-        writer.write(self.value)
-
-trait TProtocol:
-    fn read_byte(mut self) -> UInt8:
-        ...
-    fn write_byte(mut self, byte: UInt8) -> None:
-        ...
-    fn read_bool(mut self) raises -> Bool:
-        ...
-    fn write_bool(mut self, bool: Bool) -> None:
-        ...
-    fn read_double(mut self) -> Float64:
-        ...
-    fn write_double(mut self, f64_val: Float64) -> None:
-        ...
-    fn read_i8(mut self) -> Int8:
-        ...
-    fn write_i8(mut self, i8_val: Int8) -> None:
-        ...
-    fn read_i16(mut self) -> Int16:
-        ...
-    fn write_i16(mut self, i16_val: Int16) -> None:
-        ...
-    fn read_i32(mut self) -> Int32:
-        ...
-    fn write_i32(mut self, i32_val: Int32) -> None:
-        ...
-    fn read_i64(mut self) -> Int64:
-        ...
-    fn write_i64(mut self, i64_val: Int64) -> None:
-        ...
-    fn read_binary(mut self) -> List[UInt8]:
-        ...
-    fn read_string(mut self) -> String:
-        ...
-    fn write_binary(mut self, bytes: List[UInt8]) -> None:
-        ...
-    fn write_string(mut self, str: String) -> None:
-        ...
-    fn write_i64_list(mut self, i64_list: List[Int64]) -> None:
-        ...
-    fn read_struct_begin(self) -> None:
-        ...
-    fn read_struct_end(self) -> None:
-        ...
-    fn read_field_begin(mut self) -> (String, TType, Int16):
-        ...
-    fn read_field_end(self) -> None:
-        ...
-    fn read_list_begin(mut self, ttype: TType) raises -> Int:
-        ...
-    fn read_list_end(self) -> None:
-        ...
-    fn write_struct_begin(self) -> None:
-        ...
-    fn write_field_begin(mut self, _name: String, type: TType, id: Int16) -> None:
-        ...
-    fn write_field_end(self) -> None:
-        ...
-    fn write_field_stop(mut self) -> None:
-        ...
-    fn write_list_begin(mut self, ttype: TType, size: Int) -> None:
-        ...
-    fn write_list_end(self) -> None:
-        ...
-    fn write_struct_end(self) -> None:
-        ...
-    fn skip(self, ttype: TType) -> None:
-        ...
 
 @value
 struct TBinaryProtocol[Transport: TTransport](TProtocol):
@@ -119,7 +25,7 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         else:
             raise Error("Invalid boolean value: " + String(byte))
 
-    fn write_bool(mut self, bool: Bool) -> None:
+    fn write_bool(mut self, bool: Bool) raises -> None:
         if bool:
             self.write_byte(UInt8(1))
         else:
@@ -134,7 +40,7 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         return float64_ptr[]
 
     fn write_double(mut self, f64_val: Float64) -> None:
-        var float64_ptr = UnsafePointer.address_of(f64_val)
+        var float64_ptr = UnsafePointer(to=f64_val)
         var uint8_ptr = float64_ptr.bitcast[UInt8]()
         var bytes = List[UInt8](capacity=8)
 
@@ -150,7 +56,7 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
     fn write_i8(mut self, i8_val: Int8) -> None:
         self.write_byte(UInt8(i8_val))
 
-    fn read_i16(mut self) -> Int16:
+    fn read_i16(mut self) raises -> Int16:
         var buf = self.trans.read_all(2)
         var ptr = buf.unsafe_ptr()
         var int16_ptr = ptr.bitcast[Int16]()
@@ -159,9 +65,9 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         var res = byte_swap(i16_val) 
         return res
 
-    fn write_i16(mut self, i16_val: Int16) -> None:
+    fn write_i16(mut self, i16_val: Int16) raises -> None:
         var be_i16_val = byte_swap(i16_val)
-        var int16_ptr = UnsafePointer.address_of(be_i16_val)
+        var int16_ptr = UnsafePointer(to=be_i16_val)
         var uint8_ptr = int16_ptr.bitcast[UInt8]()
         var bytes = List[UInt8](capacity=2)
 
@@ -170,7 +76,7 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
 
         self.trans.write(bytes)
 
-    fn read_i32(mut self) -> Int32:
+    fn read_i32(mut self) raises -> Int32:
         var buf = self.trans.read_all(4)
         var ptr = buf.unsafe_ptr()
         var int32_ptr = ptr.bitcast[Int32]()
@@ -178,7 +84,7 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         # ToDo: check endian
         return byte_swap(i32_val)
 
-    fn read_i64(mut self) -> Int64:
+    fn read_i64(mut self) raises -> Int64:
         var buf = self.trans.read_all(8)
         var ptr = buf.unsafe_ptr()
         var int64_ptr = ptr.bitcast[Int64]()
@@ -186,9 +92,9 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         # ToDo: check endian
         return byte_swap(i64_val)
 
-    fn write_i32(mut self, i32_val: Int32) -> None:
+    fn write_i32(mut self, i32_val: Int32) raises -> None:
         var be_i32_val = byte_swap(i32_val)
-        var int32_ptr = UnsafePointer.address_of(be_i32_val)
+        var int32_ptr = UnsafePointer(to=be_i32_val)
         var uint8_ptr = int32_ptr.bitcast[UInt8]()
         var bytes = List[UInt8](capacity=4)
 
@@ -197,9 +103,9 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
 
         self.trans.write(bytes)
 
-    fn write_i64(mut self, i64_val: Int64) -> None:
+    fn write_i64(mut self, i64_val: Int64) raises -> None:
         var be_i64_val = byte_swap(i64_val)
-        var int64_ptr = UnsafePointer.address_of(be_i64_val)
+        var int64_ptr = UnsafePointer(to=be_i64_val)
         var uint8_ptr = int64_ptr.bitcast[UInt8]()
         var bytes = List[UInt8](capacity=8)
 
@@ -209,22 +115,22 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
         self.trans.write(bytes)
 
 
-    fn read_binary(mut self) -> List[UInt8]:
+    fn read_binary(mut self) raises -> List[UInt8]:
         var size = Int(self.read_i32())
         # ToDo: check string length
         var buf = self.trans.read_all(size)
         return buf
 
-    fn read_string(mut self) -> String:
-        var uint8_list = self.read_binary()
-        uint8_list.append(0)
-        return String(buffer=uint8_list)
+    fn read_string(mut self) raises -> String:
+        var bytes = self.read_binary()
+        bytes.append(0)
+        return String(bytes=bytes)
 
-    fn write_binary(mut self, bytes: List[UInt8]) -> None:
+    fn write_binary(mut self, bytes: List[UInt8]) raises -> None:
         self.write_i32(Int32(len(bytes)))
         self.trans.write(bytes)
 
-    fn write_string(mut self, str: String) -> None:
+    fn write_string(mut self, str: String) raises -> None:
         var size = str.byte_length()
         var uint8_ptr = str.unsafe_ptr()
         var bytes = List[UInt8](capacity=size)
@@ -239,24 +145,17 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
             raise Error("list element type expected i64, got " + String(type))
         var size = Int(self.read_i32())
         var i64_list = List[Int64](capacity=size)
-        for i in range(size):
+        for _ in range(size):
             i64_list.append(self.read_i64())
         return i64_list
 
-    fn write_i64_list(mut self, i64_list: List[Int64]) -> None:
-        self.write_byte(UInt8(TType.i64.value))
-        var size = len(i64_list)
-        self.write_i32(Int32(size))
-        for i in range(size):
-            self.write_i64(i64_list[i])
-
-    fn read_struct_begin(self) -> None:
+    fn read_struct_begin(mut self) -> None:
         pass
 
-    fn read_struct_end(self) -> None:
+    fn read_struct_end(mut self) -> None:
         pass
 
-    fn read_field_begin(mut self) -> (String, TType, Int16):
+    fn read_field_begin(mut self) raises -> (String, TType, Int16):
         var type_byte = self.read_byte()
         var type = TType(Int8(type_byte))
         if type == TType.stop:
@@ -277,27 +176,27 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
     fn read_list_end(self) -> None:
         pass
 
-    fn write_struct_begin(self) -> None:
+    fn write_struct_begin(mut self) -> None:
         pass
 
-    fn write_field_begin(mut self, _name: String, type: TType, id: Int16) -> None:
+    fn write_field_begin(mut self, _name: String, type: TType, id: Int16) raises -> None:
         self.write_byte(UInt8(type.value))
         self.write_i16(id)
 
-    fn write_field_end(self) -> None:
+    fn write_field_end(self) raises -> None:
         pass
 
     fn write_field_stop(mut self) -> None:
         self.write_byte(UInt8(TType.stop.value))
 
-    fn write_list_begin(mut self, ttype: TType, size: Int) -> None:
+    fn write_list_begin(mut self, ttype: TType, size: Int) raises -> None:
         self.write_byte(UInt8(ttype.value))
         self.write_i32(Int32(size))
 
     fn write_list_end(self) -> None:
         pass
 
-    fn write_struct_end(self) -> None:
+    fn write_struct_end(mut self) raises -> None:
         pass
 
     fn skip(self, ttype: TType) -> None:
