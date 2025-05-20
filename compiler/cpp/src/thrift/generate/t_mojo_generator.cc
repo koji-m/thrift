@@ -263,7 +263,7 @@ string t_mojo_generator::mojo_imports() {
 
   ss << "from collections import Optional" << '\n';
   ss << '\n';
-  ss << "from thrift.protocol import TProtocol, TType" << '\n';
+  ss << "from thrift.protocol.base import TProtocol, TType" << '\n';
   
   return ss.str();
 }
@@ -299,7 +299,7 @@ void t_mojo_generator::generate_enum(t_enum* tenum) {
            << '\n'
            << "@value" << '\n'
            << "struct " << tenum->get_name()
-           << "(Writable, Stringable):" << '\n';
+           << "(Representable, Writable, Stringable):" << '\n';
   indent_up();
   generate_mojo_docstring(f_types_, tenum);
 
@@ -308,7 +308,7 @@ void t_mojo_generator::generate_enum(t_enum* tenum) {
   f_types_ << '\n';
 
   repr_def << indent() << "fn __repr__(self) -> String:" << '\n';
-  repr_def << indent() << indent() << "var op: StringLiteral" << '\n';
+  repr_def << indent() << indent() << "var op: String" << '\n';
   write_to_def << indent() << "fn write_to[W: Writer](self, mut writer: W):" << '\n';
 
   vector<t_enum_value*> constants = tenum->get_constants();
@@ -550,7 +550,7 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
 
   out << '\n' << '\n' << "@value ";
   out << '\n' << "struct " << tstruct->get_name();
-  out << ":" << '\n';
+  out << "(Representable):" << '\n';
   indent_up();
   generate_mojo_docstring(out, tstruct);
 
@@ -600,6 +600,10 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
   indent(out) << "fn __repr__(self) -> String:" << '\n';
   indent_up();
 
+  if (tstruct->is_union()) {
+    indent(out) << "var inner = String(\"None\")" << '\n';
+  }
+
   for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
     string repr_func = "repr";
     if ((*m_iter)->get_type()->is_base_type()) {
@@ -611,7 +615,7 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
     if ((*m_iter)->get_req() == t_field::T_REQUIRED) {
       string rhs = repr_func + "(self." + (*m_iter)->get_name() + ")";
       if ((*m_iter)->get_type()->is_list()) {
-        rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
+        rhs = "String(\"<" + (*m_iter)->get_type()->get_name() + ">\")";
       }
       indent(out) << (*m_iter)->get_name() << " = " << rhs << '\n';
     } else {
@@ -619,7 +623,7 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
       indent_up();
       string rhs = repr_func + "(self." + (*m_iter)->get_name() + ".value())";
       if ((*m_iter)->get_type()->is_list()) {
-        rhs = "\"<" + (*m_iter)->get_type()->get_name() + ">\"";
+        rhs = "String(\"<" + (*m_iter)->get_type()->get_name() + ">\")";
       }
       if (tstruct->is_union()) {
         indent(out) << "inner = " << rhs << '\n';
@@ -629,18 +633,10 @@ void t_mojo_generator::generate_mojo_struct_definition(ostream& out,
         indent_down();
         indent(out) << "else:" << '\n';
         indent_up();
-        indent(out) << (*m_iter)->get_name() << " = \"None\"" << '\n';
+        indent(out) << (*m_iter)->get_name() << " = String(\"None\")" << '\n';
         indent_down();
       }
     }
-    out << '\n';
-  }
-
-  if (tstruct->is_union()) {
-    indent(out) << "else:" << '\n';
-    indent_up();
-    indent(out) << "inner = \"None\"" << '\n';
-    indent_down();
     out << '\n';
   }
 
@@ -861,7 +857,7 @@ void t_mojo_generator::generate_mojo_struct_writer(ostream& out, t_struct* tstru
   const vector<t_field*>& fields = tstruct->get_sorted_members();
   vector<t_field*>::const_iterator f_iter;
 
-  indent(out) << "fn write[T: TProtocol](self, mut oprot: T) -> None:" << '\n';
+  indent(out) << "fn write[T: TProtocol](self, mut oprot: T) raises -> None:" << '\n';
   indent_up();
 
   indent(out) << "oprot.write_struct_begin()" << '\n';
