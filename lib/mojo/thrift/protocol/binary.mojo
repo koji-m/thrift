@@ -123,7 +123,6 @@ struct TBinaryProtocol[Transport: TTransport](TProtocol):
 
     fn read_string(mut self) raises -> String:
         var bytes = self.read_binary()
-        bytes.append(0)
         return String(bytes=bytes)
 
     fn write_binary(mut self, bytes: List[UInt8]) raises -> None:
