@@ -299,7 +299,7 @@ void t_mojo_generator::generate_enum(t_enum* tenum) {
            << '\n'
            << "@value" << '\n'
            << "struct " << tenum->get_name()
-           << "(Representable, Writable, Stringable):" << '\n';
+           << "(Representable, Writable, Stringable, EqualityComparable):" << '\n';
   indent_up();
   generate_mojo_docstring(f_types_, tenum);
 
